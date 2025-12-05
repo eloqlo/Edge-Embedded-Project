@@ -27,11 +27,10 @@
  *    - 통신 프로토콜 확인
  */
 
- 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
+#include <stdio.h>          // printf(), perror() 함수
+#include <stdlib.h>         // exit() 함수
+#include <stdint.h>         // uint8_t, uint32_t 등
+#include <string.h>         // memset() 함수
 #include <fcntl.h>          // open() 함수
 #include <unistd.h>         // close(), read(), write() 함수
 #include <sys/ioctl.h>      // ioctl() 함수
@@ -95,7 +94,7 @@ int spi_init(spi_config_t *config)
 
     // 1. SPI 디바이스 파일 열기
     // O_RDWR: 읽기/쓰기 모드로 열기
-    config->fd = open(SPI_DEVICE, O_RDWR);
+    config->fd = open(SPI_DEVICE, O_RDWR);  // read/write 모드
     if (config->fd < 0) {
         perror("SPI 디바이스 열기 실패");
         return -1;
@@ -197,7 +196,7 @@ int main(void)
     printf("=== 라즈베리파이 SPI 통신 예제 ===\n\n");
 
     // SPI 설정 초기화
-    spi.mode = SPI_MODE_0;           // SPI 모드 0 (가장 일반적)
+    spi.mode = SPI_MODE_3;           // SPI 모드 3
     spi.bits = 8;                     // 8비트 전송
     spi.speed = 1000000;              // 1MHz (1,000,000 Hz)
     spi.delay = 0;                    // 지연 없음
@@ -262,7 +261,7 @@ int main(void)
 
     // ===== 예제 4: 쓰기 전용 (수신 무시) =====
     printf("--- 예제 4: 쓰기 전용 ---\n");
-    uint8_t write_tx[2] = {0xFF, 0xAA};
+    uint8_t write_tx[2] = {0xBB, 0xCC};
     uint8_t write_rx[2] = {0};  // 수신 데이터는 무시
 
     printf("쓰기 전용 데이터: ");
@@ -274,6 +273,9 @@ int main(void)
     ret = spi_transfer(&spi, write_tx, write_rx, 2);
     if (ret == 0) {
         printf("전송 완료 (수신 데이터 무시)\n");
+        for (int i = 0; i < 3; i++) {
+            printf("0x%02X ", write_rx[i]);
+        }
     }
     printf("\n");
 
