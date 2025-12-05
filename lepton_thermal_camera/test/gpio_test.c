@@ -3,7 +3,7 @@
     이 코드는 libgpiod 라이브러리를 사용하여 GPIO 21번 핀을 HIGH 상태로 설정합니다.
     5초 후에 LOW 상태로 변경하고 프로그램을 종료합니다.
 
-    libgpiod 공식 도큐먼트 : https://libgpiod.readthedocs.io/en/latest/core_line_settings.html
+    libgpiod 공식 도큐먼트 : https://libgpiod.readthedocs.io/
 */
 
 #include <gpiod.h>
