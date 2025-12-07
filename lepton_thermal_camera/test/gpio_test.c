@@ -11,11 +11,11 @@
 #include <unistd.h>
 
 int main(void){
-    struct gpiod_chip *chip;
-    struct gpiod_line_request *request;
-    struct gpiod_line_settings *settings;
-    struct gpiod_line_config *line_cfg;
-    struct gpiod_request_config *req_cfg;
+    struct gpiod_chip* chip;
+    struct gpiod_line_request* request;     
+    struct gpiod_line_settings* settings;
+    struct gpiod_line_config* line_cfg;
+    struct gpiod_request_config* req_cfg;
     unsigned int offset = 21; // GPIO 21번 핀
     int ret;
 
@@ -26,7 +26,7 @@ int main(void){
         return 1;
     }
 
-    // 2. 라인 설정 생성(출력 모드)
+    // 2. settings
     settings = gpiod_line_settings_new();
     if (!settings) {
         perror("gpiod_line_settings_new 실패\n");
@@ -36,7 +36,7 @@ int main(void){
     gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
     gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
 
-    // 3. 라인 설정 구성
+    // 3. line config
     line_cfg = gpiod_line_config_new();
     if (!line_cfg) {
         perror("gpiod_line_config_new 실패\n");
@@ -44,9 +44,9 @@ int main(void){
         gpiod_chip_close(chip);
         return 1;
     }
-    gpiod_line_config_add_line_settings(line_cfg, &offset, 1, settings); // 1개의 라인 설정 추가
+    gpiod_line_config_add_line_settings(line_cfg, &offset, 1, settings);        //TODO offset을 [21,20] 이렇게 넣으면 두 핀에 대해서 설정 가능?
 
-    // 4. 요청 구성 생성
+    // 4. request config
     req_cfg = gpiod_request_config_new();
     if (!req_cfg) {
         perror("gpiod_request_config_new 실패\n");
