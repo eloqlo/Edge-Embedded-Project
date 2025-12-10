@@ -67,21 +67,6 @@ typedef struct {
     uint16_t delay;      // 전송 간 지연 시간
 } spi_config_t;
 
-/*
- * SPI 모드 설명:
- * 
- * SPI 모드는 클럭 극성(CPOL)과 클럭 위상(CPHA)의 조합으로 결정됩니다.
- * 
- * Mode 0: CPOL=0, CPHA=0 (가장 일반적)
- *   - 클럭 유휴 상태: LOW
- *   - 데이터 샘플링: 클럭 상승 에지
- *   - 데이터 변경: 클럭 하강 에지
- * 
- * Mode 1: CPOL=0, CPHA=1
- * Mode 2: CPOL=1, CPHA=0
- * Mode 3: CPOL=1, CPHA=1
- */
-
 /**
  * SPI 초기화 함수
  * 
