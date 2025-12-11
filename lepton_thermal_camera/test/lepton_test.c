@@ -28,52 +28,12 @@ Lepton Thermal Camera Module    Raspberry Pi 4B
 #include <sys/select.h>
 #include <pigpio.h>
 
-
 #define GPIO_CHIP "/dev/gpiochip0"
 #define PWR_DWN_L   21      // gpio 핀 설정
 #define RESET_L     20
 #define PWM1_PIN    13
 #define MASTER_CLK  4
 #define MASTER_CLK_FREQ 25000000  // 25MHz
-
-
-// < 하나하나 검증결과 >
-// 1. PWR_DWN_L 핀 High로 잘 설정됨.
-// 2. RESET_L 핀 Low -> High로 잘 설정됨.
-// 3. GPIO13 PWM1 잘 설정됨.
-int lepton_startup(void)
-{
-    int rc = gpioInitialise();
-    if (rc < 0) {
-        fprintf(stderr, "pigpio 초기화 실패\n");
-        return 1;
-    }
-    // // Start at PWR_DWN_L low -- 뇌피셜
-    // gpioSetMode(PWR_DWN_L, PI_OUTPUT);
-    // gpioWrite(PWR_DWN_L, 0);
-    // gpioSetMode(MASTER_CLK, PI_OUTPUT);
-    // gpioWrite(MASTER_CLK, 0);
-    // usleep(1000);
-
-    //1. De-assert PWR_DWN_L (should be High)
-    gpioWrite(PWR_DWN_L, 1);
-    //2. Assert RESET_L (should be Low)
-    gpioSetMode(RESET_L, PI_OUTPUT);
-    gpioWrite(RESET_L, 0);
-    //3. Enable MASTER_CLK (25MHz) -- GPCLK0 (GPIO 04) 사용 
-    gpioSetMode(MASTER_CLK, PI_ALT0);
-    gpioHardwareClock(MASTER_CLK, MASTER_CLK_FREQ); // 25MHz
-
-    //4. Wait > 5000 clk periods (200us 이상)
-    usleep(1000); // 1ms 대기
-
-    //5. De-assert RESET_L
-    gpioWrite(RESET_L, 1);
-
-    printf("=== Lepton 2.5 Thermal Camera Start-up Complete ===\n");
-
-    return 0;
-}
 
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
@@ -204,11 +164,11 @@ int main(int argc, char *argv[]){
     int fd;
     int i;
 
-    // Lepton Thermal Camera Start-up
-    if(lepton_startup() != 0){
-        printf("Somethings wrong in Lepton startup...\n");
-        return -1;
-    }
+    // // Lepton Thermal Camera Start-up
+    // if(lepton_startup() != 0){
+    //     printf("Somethings wrong in Lepton startup...\n");
+    //     return -1;
+    // }
 
     // datasheet 4.2.2.3.1) Establishing Sync
     printf("=== Lepton SPI Synchronization Procedure ===\n");
@@ -260,23 +220,20 @@ int main(int argc, char *argv[]){
 	printf("bits per word: %d\n", bits);
 	printf("max speed: %d Hz (%d MHz)\n", speed, speed/1000000);
     
+    // SYNCHRONIZATION PROCEDURE
     //1. Deassert /CS and idle SCK for at least 185ms(5 frame periods)
     usleep(300000);
-
+    
     //2. Assert /CS and enable SCLK. This action causes the Lepton to start trasmission of a first packet.
-    for(i=0;i<60;i++)
-        transfer(fd);
-
     //3. Examine the ID field of the packet, identifying a discard packet.
-    // while(transfer(fd) != 59){}
+    while(transfer(fd) != 59){}
 
     //4. Continue reading packets.
 
 
     save_pgm_file();
     
-    gpioHardwareClock(MASTER_CLK, 0); // 0Hz -> stop clock
-    gpioTerminate();
+    // lepton_cleanup();
     close(fd);
 
     return 0;
