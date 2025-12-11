@@ -1,167 +1,120 @@
-// gcc lepton_test.c -o lepton_test -lgpiod -lpigpio
-// 2025-12-09 작성
-// Lepton 2.5 Thermal Camera의 전원 제어와 SPI 통신 테스트 코드
+/*
+배선도
+Lepton Thermal Camera Module    Raspberry Pi 4B
+        VCC  ----------------->   3.3V
+        GND  ----------------->   GND
+        SCK  ----------------->   SPI0 SCLK (GPIO 11)
+        MISO ----------------->   SPI0 MISO (GPIO 09)
+        MOSI ----------------->   SPI0 MOSI (GPIO 10)
+        CS   ----------------->   SPI0 CE0 (GPIO 08)
+        SDA  ----------------->   I2C SDA0 (GPIO 00)
+        SCL  ----------------->   I2C SCL0 (GPIO 01)
+        PWR_DWN_L ------------>   GPIO 21
+        RESET_L -------------->   GPIO 20
+        MASTER_CLK ----------->   GPCLK0 (GPIO 04)
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
-#include <string.h>
-#include <fcntl.h>          // open() 함수
+#include <getopt.h>
+#include <fcntl.h>
 #include <sys/ioctl.h>
+#include <linux/types.h>
 #include <linux/spi/spidev.h>
-#include <sys/time.h>
+#include <limits.h>
+#include <string.h>
 #include <sys/select.h>
 #include <pigpio.h>
+
 
 #define GPIO_CHIP "/dev/gpiochip0"
 #define PWR_DWN_L   21      // gpio 핀 설정
 #define RESET_L     20
+#define PWM1_PIN    13
 #define MASTER_CLK  4
-
-#define SPI_DEVICE "/dev/spidev0.0"
-#define SPI_MODE SPI_MODE_3
-#define SPI_BITS 8
-#define SPI_SPEED 10000000   // 10MHz
-
-#define WIDTH 80        // 160 pixels & 2 bytes per pixel
-#define HEIGHT 60
-#define FRAME_SIZE (WIDTH * HEIGHT * 2)
-#define PACKET_SIZE 164
-#define PACKETS_PER_FRAME 60
-
-#define DEASSERT_CS_TIME 200000    // >185ms
-#define FRAME_AVAILABLE_TIME 39000 // <39ms after /CS assert
-#define INTRA_PACKET_TIMEOUT 5000  // 3ms + margin = 5ms
+#define MASTER_CLK_FREQ 25000000  // 25MHz
 
 
-#define CRC_POLY 0x1021 // Lepton CRC polynomial: x^16 + x^12 + x^5 + 1
-
-
-
-uint16_t calculate_crc(uint8_t *data, int len) {
-    uint16_t crc = 0;
-    
-    for (int i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        
-        for (int j = 0; j < 8; j++) {
-            crc <<= 1;
-            if (crc & 0x10000) {
-                crc ^= CRC_POLY;
-                crc &= 0xFFFF;
-            }
-        }
-    }
-    
-    return crc;
-}
-
-int spi_read_packet(int spi_fd, uint8_t *rx_buf) {
-    uint8_t tx_buf[PACKET_SIZE] = {0}; // 더미 전송 버퍼
-
-    struct spi_ioc_transfer tr = {
-        .tx_buf = (unsigned long)tx_buf,
-        .rx_buf = (unsigned long)rx_buf,
-        .len = PACKET_SIZE,
-        .speed_hz = SPI_SPEED,
-        .delay_usecs = 0,
-        .bits_per_word = SPI_BITS,
-        .cs_change = 0,
-    };
-    
-    int ret = ioctl(spi_fd, SPI_IOC_MESSAGE(1), &tr);
-    if (ret < 1) {
-        perror("SPI 패킷 읽기 실패\n");
-        return -1;
-    }
-    
-    return 0;
-}
-
-int vospi_sync(int spi_fd) {
-    uint8_t rx_buf[PACKET_SIZE];
-    
-    // 1. /CS deassert & idle SCK >185ms 대기 (VoSPI timeout 만들기)
-    usleep(DEASSERT_CS_TIME);   // 200ms 대기
-    
-    // 2. /CS assert & SCLK enable
-    printf("\n[Step 2, 3] /CS assert & SCLK enable --> Discard packet 읽기\n");
-    memset(rx_buf, 0, PACKET_SIZE);
-    
-    // 3. Discard packet 읽기 (ID field가 xFxx)
-    if (spi_read_packet(spi_fd, rx_buf) < 0){
-        fprintf(stderr, "packet 읽기 실패\n");
-        return -1;
-    }
-    
-    // 4. 첫 packet_id=0 감지(<39ms)
-    printf("  VoSPI 헤더: 0x%02X\n", rx_buf[0]);
-    if ((rx_buf[0] & 0x0F) != 0x0F) {
-        fprintf(stderr, "  discard packet 안읽힘!!\n");
-        return -1;
-    }
-
-    printf("  Discard packet 읽음 (ID: 0x%04X)\n", rx_buf[1]);
-    return 0;
-}
-
-/* 
-Lepton 2.5 Thermal Camera Start-up
-    1. PWR_DWN_L 핀(GPIO21)을 High로 설정
-    2. RESET_L 핀(GPIO20)을 Low로 설정
-    3. Enable MASTER_CLK(25MHz)
-    4. 5000+ clk 사이클 대기
-    5. RESET_L 핀을 High로 설정
-*/
-int lepton_startup(void) 
+// < 하나하나 검증결과 >
+// 1. PWR_DWN_L 핀 High로 잘 설정됨.
+// 2. RESET_L 핀 Low -> High로 잘 설정됨.
+// 3. GPIO13 PWM1 잘 설정됨.
+int lepton_startup(void)
 {
-    //1. PWR_DWN_L 핀(GPIO21)을 High로 설정 - 하얀선
-    //2. RESET_L 핀(GPIO20)을 Low로 설정 - 검정선
-    if (gpioInitialise() < 0) {
+    int rc = gpioInitialise();
+    if (rc < 0) {
         fprintf(stderr, "pigpio 초기화 실패\n");
         return 1;
     }
-    gpioSetMode(PWR_DWN_L, PI_OUTPUT);
-    gpioSetMode(RESET_L, PI_OUTPUT);
+    // // Start at PWR_DWN_L low -- 뇌피셜
+    // gpioSetMode(PWR_DWN_L, PI_OUTPUT);
+    // gpioWrite(PWR_DWN_L, 0);
+    // gpioSetMode(MASTER_CLK, PI_OUTPUT);
+    // gpioWrite(MASTER_CLK, 0);
+    // usleep(1000);
+
+    //1. De-assert PWR_DWN_L (should be High)
     gpioWrite(PWR_DWN_L, 1);
+    //2. Assert RESET_L (should be Low)
+    gpioSetMode(RESET_L, PI_OUTPUT);
     gpioWrite(RESET_L, 0);
+    //3. Enable MASTER_CLK (25MHz) -- GPCLK0 (GPIO 04) 사용 
+    gpioSetMode(MASTER_CLK, PI_ALT0);
+    gpioHardwareClock(MASTER_CLK, MASTER_CLK_FREQ); // 25MHz
 
-    //3. MASTER_CLk enable (25MHz)
-    int ret = gpioHardwarePWM(12, 25000000, 500000);
-    if (ret!=0) {
-        fprintf(stderr, "GPIO12 PWM 설정 실패 (에러: %d)\n", ret);
-        gpioTerminate();
-        return 1;
-    }
-    usleep(1000);   //4. 충분하게 1ms 대기 (25MHz의 5000 clk 사이클은 200us)
-    gpioWrite(RESET_L, 1);  //5. RESET_L 핀을 High로 설정
+    //4. Wait > 5000 clk periods (200us 이상)
+    usleep(1000); // 1ms 대기
 
-    printf("[Lepton 2.5 Thermal Camera Start-up Complete...]\n\n");
+    //5. De-assert RESET_L
+    gpioWrite(RESET_L, 1);
+
+    printf("=== Lepton 2.5 Thermal Camera Start-up Complete ===\n");
 
     return 0;
 }
 
-uint8_t lepton_frame_packet[PACKET_SIZE];
 
-int trasnfer(int fd)
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+static void pabort(const char *s)
+{
+	perror(s);
+	abort();
+}
+
+static const char *device = "/dev/spidev0.0";
+static uint8_t mode = SPI_MODE_3;
+static uint8_t bits = 8;
+static uint32_t speed = 10000000;   // 10MHz
+static uint16_t delay = 0;
+
+#define VOSPI_FRAME_SIZE (164)
+uint8_t lepton_frame_packet[VOSPI_FRAME_SIZE];
+static unsigned int lepton_image[80][80];
+
+int transfer(int fd)
 {
     int ret;
     int i;
-    int frame_number;
-    uint8_t tx[PACKET_SIZE] = {0, };
+    uint8_t frame_number = 0;
+    uint8_t tx[VOSPI_FRAME_SIZE] = {0, };
     struct spi_ioc_transfer tr = {
 		.tx_buf = (unsigned long)tx,
 		.rx_buf = (unsigned long)lepton_frame_packet,
-		.len = PACKET_SIZE,
-		.delay_usecs = 0,
-		.speed_hz = SPI_SPEED,
-		.bits_per_word = SPI_BITS,
+		.len = VOSPI_FRAME_SIZE,
+		.delay_usecs = delay,
+		.speed_hz = speed,
+		.bits_per_word = bits,
 	};
 
     ret = ioctl(fd, SPI_IOC_MESSAGE(1), &tr);
-    if (ret < 1)
-        perror("can't send spi message\n");
+    if(ret < 1)
+        pabort("can't send spi message");
 
-    if(((lepton_frame_packet[0]&0x0f) != 0x0f))
+    // printf(" --- 프레임 0,1: %d %d \n", lepton_frame_packet[0], lepton_frame_packet[1]);
+    if(((lepton_frame_packet[0] & 0x0f) != 0x0f))
     {
         frame_number = lepton_frame_packet[1];
 
@@ -169,52 +122,162 @@ int trasnfer(int fd)
         {
             for(i=0;i<80;i++)
             {
-                //TODO  image 받아오기
-                // lepton_image[frame_number][i] = (lepton_frame_packet[2*i+4] << 8 | lepton_frame_packet[2*i+5]);
-
+                lepton_image[frame_number][i] = (lepton_frame_packet[2*i+4] << 8 | lepton_frame_packet[2*i+5]);
             }
         }
     }
 
+    // 받아온 프레임 찍어보자...
+    printf("ID [%d] 프레임 상위 5 bytes -- ", frame_number);
+    for (i=0;i<10;i++){
+        printf("%02X ", lepton_frame_packet[i]);
+        if ((i+1)%2==0)
+            printf("/ ");
+    }
+    printf("\n");
+
+    return frame_number;
 }
 
 
-int main(void)
+static void save_pgm_file(void)
 {
+	int i;
+	int j;
+	unsigned int maxval = 0;
+	unsigned int minval = UINT_MAX;
+	char image_name[32];
+	int image_index = 0;
+
+	do {
+		sprintf(image_name, "IMG_%.4d.pgm", image_index);
+		image_index += 1;
+		if (image_index > 9999) 
+		{
+			image_index = 0;
+			break;
+		}
+
+	} while (access(image_name, F_OK) == 0);
+
+	FILE *f = fopen(image_name, "w");
+	if (f == NULL)
+	{
+		printf("Error opening file!\n");
+		exit(1);
+	}
+
+	printf("Calculating min/max values for proper scaling...\n");
+	for(i=0;i<60;i++)
+	{
+		for(j=0;j<80;j++)
+		{
+			if (lepton_image[i][j] > maxval) {
+				maxval = lepton_image[i][j];
+			}
+			if (lepton_image[i][j] < minval) {
+				minval = lepton_image[i][j];
+			}
+		}
+	}
+	printf("maxval = %u\n",maxval);
+	printf("minval = %u\n",minval);
+	
+	fprintf(f,"P2\n80 60\n%u\n",maxval-minval);
+	for(i=0;i<60;i++)
+	{
+		for(j=0;j<80;j++)
+		{
+			fprintf(f,"%d ", lepton_image[i][j] - minval);
+		}
+		fprintf(f,"\n");
+	}
+	fprintf(f,"\n\n");
+
+	fclose(f);
+}
+
+
+int main(int argc, char *argv[]){
+    printf("=== 로직 아날라이저로 SPI 신호 확인용 테스트 프로그램 ===\n");
     int ret = 0;
+    int fd;
+    int i;
 
     // Lepton Thermal Camera Start-up
     if(lepton_startup() != 0){
         printf("Somethings wrong in Lepton startup...\n");
         return -1;
     }
-    
-    int spi_fd = open(SPI_DEVICE, O_RDWR);
-    if (spi_fd < 0) {
-        perror("SPI device open 실패");
-        return 1;
-    }
-    
-    uint8_t mode = SPI_MODE;        // Mode 3
-    uint32_t speed = SPI_SPEED;     // 10MHz
-    uint8_t bits = SPI_BITS;        // 8 bits
 
-    ioctl(spi_fd, SPI_IOC_WR_MODE, &mode);
-    ioctl(spi_fd, SPI_IOC_RD_MODE, &mode);
-    ioctl(spi_fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
-    ioctl(spi_fd, SPI_IOC_RD_MAX_SPEED_HZ, &speed);
-    ioctl(spi_fd, SPI_IOC_WR_BITS_PER_WORD, &bits);
-    ioctl(spi_fd, SPI_IOC_RD_BITS_PER_WORD, &bits);
-    
-    // VoSPI 동기화
-    if (vospi_sync(spi_fd) != 0) {
-        fprintf(stderr, "\n❌ 초기 동기화 실패\n");
-        return 1;
-    }
+    // datasheet 4.2.2.3.1) Establishing Sync
+    printf("=== Lepton SPI Synchronization Procedure ===\n");
 
-    
+    fd = open(device, O_RDWR);
+	if (fd < 0)
+	{
+		pabort("can't open device");
+	}
 
-    close(spi_fd);
+	ret = ioctl(fd, SPI_IOC_WR_MODE, &mode);
+	if (ret == -1)
+	{
+		pabort("can't set spi mode");
+	}
+
+	ret = ioctl(fd, SPI_IOC_RD_MODE, &mode);
+	if (ret == -1)
+	{
+		pabort("can't get spi mode");
+	}
+
+	ret = ioctl(fd, SPI_IOC_WR_BITS_PER_WORD, &bits);
+	if (ret == -1)
+	{
+		pabort("can't set bits per word");
+	}
+
+	ret = ioctl(fd, SPI_IOC_RD_BITS_PER_WORD, &bits);
+	if (ret == -1)
+	{
+		pabort("can't get bits per word");
+	}
+
+	ret = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
+	if (ret == -1)
+	{
+		pabort("can't set max speed hz");
+	}
+
+	ret = ioctl(fd, SPI_IOC_RD_MAX_SPEED_HZ, &speed);
+	if (ret == -1)
+	{
+		pabort("can't get max speed hz");
+	}
+
+    printf("SPI 동기화 시작...\n");
+	printf("spi mode: %d\n", mode);
+	printf("bits per word: %d\n", bits);
+	printf("max speed: %d Hz (%d MHz)\n", speed, speed/1000000);
+    
+    //1. Deassert /CS and idle SCK for at least 185ms(5 frame periods)
+    usleep(300000);
+
+    //2. Assert /CS and enable SCLK. This action causes the Lepton to start trasmission of a first packet.
+    for(i=0;i<60;i++)
+        transfer(fd);
+
+    //3. Examine the ID field of the packet, identifying a discard packet.
+    // while(transfer(fd) != 59){}
+
+    //4. Continue reading packets.
+
+
+    save_pgm_file();
+    
+    gpioHardwareClock(MASTER_CLK, 0); // 0Hz -> stop clock
+    gpioTerminate();
+    close(fd);
 
     return 0;
 }
