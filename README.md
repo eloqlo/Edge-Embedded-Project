@@ -48,10 +48,10 @@
 (추후 작성 예정)
 ## 5. TEAM
 
-|이재형|이하늘|
-|------|---|
-|<img src="https://github.com/eloqlo.png" width="120">|<img src="https://github.com/belowalways.png" width="120">|
-| Embedded System | Frontend, GUI |
+|이재형|이하늘|이동준|
+|------|------|------|
+|<img src="https://github.com/eloqlo.png" width="120">|<img src="https://github.com/belowalways.png" width="120">|<img src="https://github.com/DJun0003.png" width="120">|
+| Embedded System | Frontend, GUI | AI Quantization |
 
 ### 팀원별 역할
 
