@@ -4,6 +4,7 @@
 <사용법>
 
 */
+#include "lepton.h"
 
 int main(int argc, char *argv[]){   
 
@@ -49,5 +50,5 @@ int main(int argc, char *argv[]){
     }
 
     close(fd);
-    return 0;
+    return (ret < 0) ? -1 : 0;
 }
