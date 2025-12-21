@@ -133,9 +133,11 @@ int lepton_capture(int fd)
     }
 }
 
-const uint16_t (*get_image(void))[LEPTON_WIDTH + DEBUG_ID_CRC]
+void get_image(uint16_t (*cpy_image)[LEPTON_WIDTH])
 {
-    return image;
+    for (int r=0; r<LEPTON_HEIGHT; r++){
+        memcpy(cpy_image[r], &image[r][DEBUG_ID_CRC], sizeof(uint16_t)*LEPTON_WIDTH);
+    }
 }
 
 

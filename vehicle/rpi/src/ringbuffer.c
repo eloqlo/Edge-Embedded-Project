@@ -16,11 +16,11 @@ int lepton_ringbuffer_is_empty(LeptonRingBuffer* rb)
     return (rb->count == 0) ? 1 : 0;
 }
 
-int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH + DEBUG_ID_CRC])
+int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTON_WIDTH])
 {
     if (ringbuffer_is_available(rb))
     {
-        memcpy(rb->buffer[rb->head], image, sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH + DEBUG_ID_CRC));
+        memcpy(rb->buffer[rb->head], image, sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
         rb->head = (rb->head + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
         rb->count++;
         return 1;
@@ -32,7 +32,7 @@ int lepton_ringbuffer_enqueue(LeptonRingBuffer* rb, const uint16_t image[][LEPTO
     }
 }
 
-int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH + DEBUG_ID_CRC])
+int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDTH])
 {
     if (ringbuffer_is_empty(rb))
     {
@@ -41,7 +41,7 @@ int lepton_ringbuffer_dequeue(LeptonRingBuffer* rb, uint16_t image[][LEPTON_WIDT
     }
     else
     {
-        memcpy(image, rb->buffer[rb->tail], sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH + DEBUG_ID_CRC));
+        memcpy(image, rb->buffer[rb->tail], sizeof(uint16_t)*LEPTON_HEIGHT*(LEPTON_WIDTH));
         rb->tail = (rb->tail + OFFSET_SIZE) % (OFFSET_SIZE * BUFFER_SIZE);
         rb->count--;
         return 1;
@@ -62,7 +62,7 @@ static int print_ringbuffer_status(LeptonRingBuffer* rb)
     return 1;
 }
 
-static int print_image_data(uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH + DEBUG_ID_CRC])
+static int print_image_data(uint16_t image[LEPTON_HEIGHT][LEPTON_WIDTH])
 {
     for (size_t i = 0; i < 3; i++) {
         for (size_t j = 0; j < 3; j++) {

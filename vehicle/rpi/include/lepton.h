@@ -30,11 +30,9 @@ int init_lepton(void);
 
 int cleanup_lepton(int fd);
 
-int set_image(int fd);
+int lepton_capture(int fd);
 
-int lepton_capture(void);
-
-int cleanup_lepton(int fd);
+void get_image(uint16_t (*cpy_image)[LEPTON_WIDTH]);
 
 void print_image(int fd);
 
