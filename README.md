@@ -39,7 +39,8 @@
   
 
 ## 4. 시스템 구성
-<img width="1307" height="867" alt="image" src="https://github.com/user-attachments/assets/e943eca2-93cc-4fb3-8810-24f607dce645" />
+<img width="1610" height="1067" alt="스크린샷 2025-12-22 224059" src="https://github.com/user-attachments/assets/c7404fb2-b194-4e86-b0b2-cf0f4b9244bf" />
+
 
 ### 4.1. 탐색 로봇
 (추후 작성 예정)
