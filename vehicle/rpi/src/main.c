@@ -68,8 +68,6 @@ int main(void){
     pthread_create(&lepton_capture_thread_id, NULL, lepton_capture_thread, NULL);
     pthread_create(&lepton_transmit_thread_id, NULL, lepton_transmit_thread, NULL);
 
-    // TODO 적절한 종료 조건 추가 필요
-
     pthread_join(lepton_capture_thread_id, NULL);
     pthread_join(lepton_transmit_thread_id, NULL);
     return 0;
