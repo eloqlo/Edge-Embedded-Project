@@ -9,6 +9,8 @@
 #include <QKeyEvent>
 #include <QFrame>
 #include <QTimer> // 자동 재접속용
+#include <QProgressBar> // ★ 추가
+#include <QSlider>      // ★ 추가
 
 // ★ Qt 6 오디오 헤더
 #include <QAudioSource>
@@ -50,7 +52,8 @@ private:
     QWidget *centralWidget;
     QLabel *rgbCameraLabel;
     QLabel *thermalCameraLabel;
-    QPushButton *btnDetectToggle;
+    QPushButton *btnRgbDetect;
+    QPushButton *btnThermalDetect;
 
     QFrame *sensorBox;
     QLabel *lblCO;
@@ -60,5 +63,10 @@ private:
 
     QPushButton *btnReboot;
     QPushButton *btnMicToggle;
+
+    // ★ 추가된 UI 변수
+    QProgressBar *volumeBar;   // 목소리 크기 보여주는 막대
+    QSlider *volumeSlider;     // 볼륨 조절 슬라이더
+    float currentGain = 1.0f;  // 현재 볼륨 배율 (1.0 = 원본)
 };
 #endif // MAINWINDOW_H
